@@ -225,16 +225,23 @@ non-interactive and JSON equivalent.
 ### Space-to-Space transfer
 
 Rsync disallows two remote hosts. Rclone accepts remote operands on both sides.
-When supported and when the remote name is the same it can use server-side
-copy; otherwise it downloads and re-uploads. The command grammar does not
-depend on this optimization. ([rsync
+By default, it attempts server-side copy only when the remote names are the
+same; unsupported remotes instead download and re-upload. Its opt-in
+`--server-side-across-configs` flag can also allow compatible remotes that use
+the same backend but have differently named configurations, because rclone
+cannot determine that compatibility safely by default. The command grammar does
+not depend on the chosen route. ([rsync
 “GENERAL”](https://github.com/RsyncProject/rsync/blob/v3.4.4/rsync.1.md#general),
 [rclone server-side copy](https://rclone.org/docs/#server-side-copy), [rclone
-`copy`](https://rclone.org/commands/rclone_copy/#synopsis))
+`--server-side-across-configs`](https://rclone.org/docs/#server-side-across-configs),
+[rclone `copy`](https://rclone.org/commands/rclone_copy/#synopsis))
 
 **Lios direction:** support `lios copy photos:/raw archive:/raw` and the
 corresponding `sync` form even if the initial implementation streams through
-the local Task Worker. Optimization must not alter path, filter, Transfer Plan,
+the local Task Worker. Lios intentionally exposes no equivalent to rclone's
+cross-configuration optimization flag: registered Space Names describe Lios
+Spaces rather than arbitrary backend configurations, and route selection is a
+Task Worker capability. Optimization must not alter path, filter, Transfer Plan,
 confirmation, progress, or failure semantics.
 
 ## Conflict matrix
@@ -269,4 +276,3 @@ confirmation, progress, or failure semantics.
    foreground process completion?
 8. For Space-to-Space work, which routing or optimization facts must be visible
    in the Transfer Plan and progress output?
-
