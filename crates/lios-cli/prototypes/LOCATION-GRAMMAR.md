@@ -19,3 +19,10 @@ remain ordinary local-name characters.
 
 This is a throwaway branch artifact, not production parsing code. Once the grammar is accepted,
 the decision—not this terminal shell—belongs in the real parser.
+
+## Proposed breaking migration
+
+A one-character Space Name collides with Windows drive syntax, so this prototype recommends a
+two-character minimum. A breaking release must validate the existing registry at startup, reject
+an alias such as a with an actionable space rename a media instruction, and never automatically
+rename a local alias. The final release boundary and removal schedule belong to issue #8.

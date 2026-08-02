@@ -17,6 +17,7 @@ const cases = [
   ["photos:/", "Catalog Root has no trailing-slash mapping distinction"],
   ["/", "POSIX Local Location root for Linux and macOS"],
   ["", "an empty raw operand is rejected"],
+  ["a:/docs", "a one-letter prefix is Windows drive syntax, never a Space Path"],
 ];
 
 function isSpaceName(value) {
@@ -127,6 +128,10 @@ function grammar() {
     "Roots",
     "  photos: and photos:/ are the same Catalog Root (no trailing-slash mapping distinction).",
     "  /, C:\\, and \\\\server\\share are Local Location roots (no trailing-slash mapping distinction).",
+    "",
+    "Breaking migration recommendation",
+    "  One-character aliases are rejected at upgrade because a: is Windows drive syntax.",
+    "  Report the exact local alias and an actionable space rename command; never auto-rename it.",
     "",
     "Shell quoting",
     "  A shell turns quoted photos:/docs into the argv string photos:/docs before parsing.",
