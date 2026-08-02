@@ -12,14 +12,19 @@ const cases = [
   ["\\\\server\\share\\photos:", "UNC Local Location wins before Space Path parsing"],
   ["vault:/docs", "unregistered Space Name is an error, not a silently local path"],
   ["photos:docs", "Space Paths always use an absolute Catalog path"],
-  ['"photos:/docs"', "shell quotes preserve one operand; they are not grammar characters"],
+  ["photos:/docs", "the argv value after shell quote removal is a Space Path"],
+  ['"photos:/docs"', "literal quote characters remain a Local Location"],
   ["photos:/", "Catalog Root has no trailing-slash mapping distinction"],
   ["/", "POSIX Local Location root for Linux and macOS"],
-  ['""', "an empty operand after shell quoting is rejected"],
+  ["", "an empty raw operand is rejected"],
 ];
 
 function isSpaceName(value) {
-  return /^[a-z][a-z0-9_-]{0,31}$/.test(value);
+  return /^[a-z][a-z0-9_-]{1,31}$/.test(value);
+}
+
+function isPotentialSpaceName(value) {
+  return /^[A-Za-z][A-Za-z0-9_-]*$/.test(value);
 }
 
 function isWindowsDrivePath(value) {
@@ -37,23 +42,12 @@ function isExplicitLocal(value) {
   );
 }
 
-function stripDemoQuotes(value) {
-  if (
-    value.length >= 2 &&
-    ((value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'")))
-  ) {
-    return { operand: value.slice(1, -1), quoted: true };
-  }
-  return { operand: value, quoted: false };
-}
-
 function parseRemote(name, suffix, spaces) {
   if (!isSpaceName(name)) {
     throw new Error(
       "invalid Space Name " +
         JSON.stringify(name) +
-        "; use a lowercase registered Space Name or make the Local Location explicit",
+        "; use a registered lowercase alias with two to 32 characters or make the Local Location explicit",
     );
   }
   if (!spaces.includes(name)) {
@@ -99,43 +93,44 @@ function parseLocal(value) {
 
 function parseOperand(raw, spaces) {
   if (!raw) throw new Error("an operand cannot be empty");
-  const quoted = stripDemoQuotes(raw);
-  const operand = quoted.operand;
-  if (!operand) throw new Error("an operand cannot be empty after shell quoting");
-  if (isWindowsDrivePath(operand) || isExplicitLocal(operand)) {
-    return { ...parseLocal(operand), quoted: quoted.quoted };
+  if (isWindowsDrivePath(raw) || isExplicitLocal(raw)) {
+    return parseLocal(raw);
   }
-  const colon = operand.indexOf(":");
+  const colon = raw.indexOf(":");
   if (colon >= 0) {
-    const name = operand.slice(0, colon);
-    const suffix = operand.slice(colon + 1);
-    if (isSpaceName(name) || suffix.startsWith("/")) {
-      return { ...parseRemote(name, suffix, spaces), quoted: quoted.quoted };
+    const name = raw.slice(0, colon);
+    const suffix = raw.slice(colon + 1);
+    if (isSpaceName(name) || (suffix.startsWith("/") && isPotentialSpaceName(name))) {
+      return parseRemote(name, suffix, spaces);
     }
   }
-  return { ...parseLocal(operand), quoted: quoted.quoted };
+  return parseLocal(raw);
 }
 
 function grammar() {
   return [
     "Recommended grammar",
-    "  Space Path      ::= Space Name ':' [ '/' Catalog Segment ('/' Catalog Segment)* [ '/' ] ]",
-    "  Space Name      ::= registered lowercase alias: [a-z][a-z0-9_-]{0,31}",
-    "  Local Location  ::= Windows drive / UNC / explicit ./, ../, .\\, ..\\, /, or \\ prefix",
+    "  Operand         ::= Space Path | Local Location",
+    "  Space Path      ::= Space Name ':' | Space Name ':/' | Space Name ':/' Catalog Path [ '/' ]",
+    "  Catalog Path    ::= Catalog Segment ( '/' Catalog Segment )*",
+    "  Catalog Segment ::= nonempty, not . or .., and contains no backslash",
+    "  Space Name      ::= registered lowercase alias: [a-z][a-z0-9_-]{1,31}",
+    "  Local Location  ::= Windows Drive Path | UNC Path | Explicit Local Path | Bare Local Path",
     "",
     "Precedence",
     "  1. Windows drive-relative/absolute paths and UNC paths are always Local Locations.",
     "  2. An explicit local prefix is always a Local Location.",
-    "  3. A valid-looking name: is a Space Path attempt; it must name a registered Space.",
+    "  3. A valid-looking name: is a Space Path attempt; it must name a registered local Space Name.",
     "  4. Other bare operands are Local Locations. Prefix colon-containing local names with ./ or .\\.",
+    "  5. A one-letter prefix before : is always Windows drive syntax, so Space Names need two characters.",
     "",
     "Roots",
     "  photos: and photos:/ are the same Catalog Root (no trailing-slash mapping distinction).",
     "  /, C:\\, and \\\\server\\share are Local Location roots (no trailing-slash mapping distinction).",
     "",
     "Shell quoting",
-    "  The shell turns a quoted photos:/docs into the same argv string as photos:/docs.",
-    "  The parser does not use quote characters as grammar.",
+    "  A shell turns quoted photos:/docs into the argv string photos:/docs before parsing.",
+    "  Literal quote characters in argv are ordinary Local Location characters, not parser syntax.",
   ].join("\n");
 }
 
@@ -151,7 +146,7 @@ function render(state) {
   if (output.isTTY) output.write("\x1b[2J\x1b[H");
   output.write("\x1b[1mLios location grammar prototype — " + state.view + "\x1b[0m\n");
   output.write(
-    "\x1b[2mRegistered Space Names: " +
+    "\x1b[2mRegistered local Space Names: " +
       (state.spaces.join(", ") || "(none)") +
       " · parser is portable across Windows, Linux, and macOS\x1b[0m\n\n",
   );
@@ -168,8 +163,9 @@ function render(state) {
   output.write("  grammar             show the grammar and precedence\n");
   output.write("  cases               show curated operands\n");
   output.write("  case NUMBER         parse a curated operand\n");
-  output.write("  parse OPERAND       parse one operand (outer matching quotes are demo-only)\n");
-  output.write("  spaces a,b          replace registered Space Names in memory\n");
+  output.write("  parse OPERAND       parse one argv operand after shell quote removal\n");
+  output.write("  spaces photos,archive replace registered local Space Names in memory\n");
+  output.write("  spaces clear        simulate a Lios Home with no registered Space Names\n");
   output.write("  q                   quit\n");
 }
 
@@ -190,25 +186,46 @@ async function run() {
       state.message = "";
       continue;
     }
+    if (answer === "spaces clear") {
+      state.spaces = [];
+      state.message = "Registered local Space Names cleared only in this in-memory prototype.";
+      continue;
+    }
     if (answer.startsWith("spaces ")) {
-      state.spaces = answer
+      const names = answer
         .slice("spaces ".length)
         .split(",")
         .map(function (name) {
           return name.trim();
         })
         .filter(Boolean);
-      state.message = "Registered Space Names changed only in this in-memory prototype.";
+      const invalid = names.find(function (name) {
+        return !isSpaceName(name);
+      });
+      if (invalid) {
+        state.message =
+          "Invalid Space Name " +
+          JSON.stringify(invalid) +
+          "; aliases must be lowercase and two to 32 characters.";
+        continue;
+      }
+      if (new Set(names).size !== names.length) {
+        state.message = "Duplicate Space Names are not a valid registration state.";
+        continue;
+      }
+      state.spaces = names;
+      state.message = "Registered local Space Names changed only in this in-memory prototype.";
       continue;
     }
     let operand;
     if (answer.startsWith("case ")) {
       const index = Number(answer.slice("case ".length)) - 1;
-      operand = cases[index] && cases[index][0];
-      if (!operand) {
+      const selected = cases[index];
+      if (!selected) {
         state.message = "Unknown curated case.";
         continue;
       }
+      operand = selected[0];
     } else if (answer.startsWith("parse ")) {
       operand = answer.slice("parse ".length);
     } else {
