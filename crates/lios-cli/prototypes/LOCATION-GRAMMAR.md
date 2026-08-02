@@ -24,5 +24,5 @@ the decision—not this terminal shell—belongs in the real parser.
 
 A one-character Space Name collides with Windows drive syntax, so this prototype recommends a
 two-character minimum. A breaking release must validate the existing registry at startup, reject
-an alias such as a with an actionable space rename a media instruction, and never automatically
+an alias such as a with the actionable command lios space rename a media, and never automatically
 rename a local alias. The final release boundary and removal schedule belong to issue #8.
